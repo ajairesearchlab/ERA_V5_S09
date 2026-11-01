@@ -1,0 +1,116 @@
+device cuda, model D=384 L=8 H=6 T=256 V=8192, <pad>=0 <eos>=1
+
+==============================================================================
+4. GRADIENT ACCUMULATION: correct vs average of averages (Task 3)
+==============================================================================
+  4 micro-batches of 8 rows; rows in micro-batch i keep [256, 128, 64, 32] real tokens, the rest is <pad>
+
+  4a. One step's gradient, compared with ONE big batch holding the same rows (fp32):
+
+    different lengths: real targets per micro-batch [2038, 1016, 504, 248]
+    share of tokens  ['53.5%', '26.7%', '13.2%', '6.5%']   vs the bug's vote ['25.0%', '25.0%', '25.0%', '25.0%']
+    method                         loss  grad rel. error    cosine
+    one big batch (reference)    9.0773                -         -
+    token-weighted (correct)     9.0773         1.22e-06  1.000000
+    average of averages          9.0817         5.80e-01  0.828221
+
+    equal lengths: real targets per micro-batch [2038, 2039, 2040, 2038]
+    method                         loss  grad rel. error    cosine
+    one big batch (reference)    9.0823                -         -
+    token-weighted (correct)     9.0823         9.45e-07  1.000000
+    average of averages          9.0823         2.78e-04  1.000000
+
+  4b. Two training runs, 600 steps each, same initial weights, same batches:
+
+  RUN correct: reduction = token  (loss = what this run optimises; true = token-weighted, same yardstick for both)
+    step        lr     loss     true    gnorm     val      ms    time
+       0  1.00e-05   9.0882   9.0882    4.910  9.0895     173      0s
+      50  5.10e-04   7.1367   7.1367    1.774  7.1449     111      6s
+     100  1.00e-03   6.5349   6.5349    0.752  6.5746     112     12s
+     150  9.78e-04   6.2593   6.2593    0.653  6.3001     114     18s
+     200  9.14e-04   6.1704   6.1704    0.747  6.1301     115     24s
+     250  8.15e-04   6.1418   6.1418    1.171  5.9932     114     31s
+     300  6.89e-04   5.8617   5.8617    0.619  5.8703     129     37s
+     350  5.50e-04   5.8352   5.8352    0.601  5.7768     149     44s
+     400  4.11e-04   5.6733   5.6733    0.630  5.6886     109     50s
+     450  2.85e-04   5.6723   5.6723    0.602  5.6203     140     56s
+     500  1.86e-04   5.6456   5.6456    0.650  5.5682     148     64s
+     550  1.22e-04   5.5213   5.5213    0.623  5.5223     107     70s
+
+  RUN bug: reduction = mean_of_means  (loss = what this run optimises; true = token-weighted, same yardstick for both)
+    step        lr     loss     true    gnorm     val      ms    time
+       0  1.00e-05   9.0900   9.0882    5.317  9.0895     139      0s
+      50  5.10e-04   7.1933   7.1952    1.205  7.2062     132      7s
+     100  1.00e-03   6.7403   6.6882    1.273  6.7076     112     13s
+     150  9.78e-04   6.3075   6.4013    0.882  6.4320     142     21s
+     200  9.14e-04   6.2500   6.3167    0.959  6.2883     109     27s
+     250  8.15e-04   6.2454   6.3705    1.029  6.1590     181     34s
+     300  6.89e-04   6.0281   6.0489    0.806  6.0603     140     41s
+     350  5.50e-04   6.0504   6.0276    0.875  5.9838     152     48s
+     400  4.11e-04   5.9146   5.8782    0.868  5.9010     155     55s
+     450  2.85e-04   5.8475   5.8976    0.779  5.8435     141     62s
+     500  1.86e-04   5.8845   5.9110    0.760  5.7977     139     69s
+     550  1.22e-04   5.7345   5.7443    0.763  5.7623     111     76s
+
+    step   correct  bug says  bug true  bug error  val correct  val bug
+       0    9.0882    9.0900    9.0882      +0.0%       9.0895   9.0895
+      50    7.1367    7.1933    7.1952      -0.0%       7.1449   7.2062
+     100    6.5349    6.7403    6.6882      +0.8%       6.5746   6.7076
+     150    6.2593    6.3075    6.4013      -1.5%       6.3001   6.4320
+     200    6.1704    6.2500    6.3167      -1.1%       6.1301   6.2883
+     250    6.1418    6.2454    6.3705      -2.0%       5.9932   6.1590
+     300    5.8617    6.0281    6.0489      -0.3%       5.8703   6.0603
+     350    5.8352    6.0504    6.0276      +0.4%       5.7768   5.9838
+     400    5.6733    5.9146    5.8782      +0.6%       5.6886   5.9010
+     450    5.6723    5.8475    5.8976      -0.8%       5.6203   5.8435
+     500    5.6456    5.8845    5.9110      -0.4%       5.5682   5.7977
+     550    5.5213    5.7345    5.7443      -0.2%       5.5223   5.7623
+     599    5.4974    5.7876    5.7371      +0.9%          nan      nan
+
+  final validation loss: correct 5.4977, bug 5.7372 (+0.2395)
+  'bug says' is what the buggy run would put on its dashboard. 'bug true' is the same
+  batch scored per token. The short micro-batches hold the early, poorly-predicted
+  positions, and the bug gives them a full quarter of the vote.
+
+  plot saved: C:\Users\ajair\Projects\ERA_V5\mini_llm\runs\session10\accumulation.png
+
+==============================================================================
+5. GRAD NORM AT EVERY STEP: does it move before the loss? (Task 4)
+==============================================================================
+  5a. The normal (correct) run. Largest grad-norm jumps after warmup, against the
+      loss in the 10 steps before and after:
+    step  grad norm  x median  loss before  loss after
+     458      2.063      3.44       5.6632      5.6447
+     480      1.739      2.91       5.6043      5.5763
+     250      1.171      1.82       6.0070      5.9872
+     570      1.089      1.81       5.4927      5.5324
+     463      1.080      1.81       5.6331      5.6188
+  A healthy run with clipping on rarely gives a clean spike; that is the point of
+  watching it. 5b makes the run go wrong on purpose.
+
+  5b. Learning-rate range test: lr grows from 0.0001 to 0.1 over 300 steps,
+      clipping OFF (the norm is still measured), until training breaks.
+    step        lr     loss     true    gnorm     val      ms    time
+       0  1.00e-04   9.0908   9.0908    4.912  0.0000     174      0s
+      20  1.58e-04   7.8887   7.8887    1.414       -     113      3s
+      40  2.51e-04   7.2003   7.2003    0.728       -     110      5s
+      60  3.98e-04   7.0168   7.0168    1.042       -     113      7s
+      80  6.31e-04   6.6203   6.6203    0.676       -     115     10s
+     100  1.00e-03   6.4741   6.4741    0.839       -     114     12s
+     120  1.58e-03   6.1541   6.1541    0.647       -     119     14s
+     140  2.51e-03   6.0931   6.0931    0.627       -     133     17s
+     160  3.98e-03   6.0817   6.0817    0.647       -     112     19s
+     180  6.31e-03   6.3443   6.3443    1.336       -     110     22s
+     200  1.00e-02   6.7286   6.7286    0.640       -     117     24s
+     220  1.58e-02   6.3844   6.3844    0.389       -     114     26s
+     240  2.51e-02   6.2246   6.2246    0.247       -     128     29s
+     260  3.98e-02   6.3834   6.3834    0.383       -     120     31s
+     280  6.31e-02   6.7142   6.7142    0.580       -     119     34s
+
+  grad norm leaves its band (> 2x its recent median for 3 steps): step 189
+  loss turns up (EMA rises 0.3 above its best so far):            step 193
+  -> the grad norm moved 4 steps BEFORE the loss (lr 7.76e-03 vs 8.51e-03)
+
+  plot saved: C:\Users\ajair\Projects\ERA_V5\mini_llm\runs\session10\gradnorm.png
+
+Session 10 done in 3.3 min.

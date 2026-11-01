@@ -55,3 +55,25 @@ class ModelConfig:
 
     def to_dict(self):
         return asdict(self)
+
+
+@dataclass
+class TrainConfig:
+    """Training-loop settings (Session 10). The batch the optimiser sees is
+    micro_batch x accum_steps sequences, independent of what fits in memory."""
+    micro_batch: int = 8                # sequences per forward/backward
+    accum_steps: int = 4                # micro-batches per optimiser step -> 32 sequences
+    steps: int = 600
+    lr: float = 1e-3
+    warmup: int = 100
+    min_lr_frac: float = 0.1            # cosine decays to 10% of peak
+    weight_decay: float = 0.1
+    beta1: float = 0.9
+    beta2: float = 0.95
+    grad_clip: float = 1.0              # 0 disables clipping (the norm is still measured)
+    eval_every: int = 50
+    eval_batches: int = 10
+    seed: int = 0
+
+    def to_dict(self):
+        return asdict(self)

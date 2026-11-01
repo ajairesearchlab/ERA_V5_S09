@@ -1,0 +1,39 @@
+{
+  "gpu": "NVIDIA GeForce RTX 5060 Laptop GPU",
+  "measured_peak_tflops": 30.88682388990689,
+  "spec_tflops": null,
+  "flops_per_token_6N": 122722560,
+  "flops_per_token_refined": 113285376,
+  "configs": [
+    {
+      "config": "micro 8 x accum 4 (our loop)",
+      "tokens_per_s": 64534.07747023676,
+      "mfu_6N": 0.25641313016239864,
+      "mfu_refined": 0.23669533834516057,
+      "peak_mib": 911.9873046875
+    },
+    {
+      "config": "micro 32 x accum 1",
+      "tokens_per_s": 92068.1315417154,
+      "mfu_6N": 0.3658141360694669,
+      "mfu_refined": 0.3376835681291583,
+      "peak_mib": 2412.984375
+    },
+    {
+      "config": "micro 64 x accum 1",
+      "tokens_per_s": 86711.01556140055,
+      "mfu_6N": 0.34452871709390226,
+      "mfu_refined": 0.3180349665031461,
+      "peak_mib": 4534.26513671875
+    }
+  ],
+  "phases_ms": {
+    "data (get_batch + copy)": 0.32803000940475613,
+    "forward + loss": 26.38192500162404,
+    "backward": 56.15899499680381,
+    "grad norm + clip": 1.3877649937057868,
+    "optimizer step": 5.56053000909742,
+    "zero_grad": 0.1029299950459972,
+    "logging (.item())": 0.1668750075623393
+  }
+}

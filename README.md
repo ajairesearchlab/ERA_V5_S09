@@ -232,3 +232,6 @@ mini_llm/
 │   └── session09_part2.py   # Part 2
 └── runs/                    # logs and plots (data/prepared/ and checkpoints/ are not committed)
 ```
+
+## Session 10 ReadMe file
+Session 10 (training loop): see README_S10.md

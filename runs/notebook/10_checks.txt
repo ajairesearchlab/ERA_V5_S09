@@ -1,0 +1,137 @@
+device cuda, model D=384 L=8 H=6 T=256 V=8192, <pad>=0 <eos>=1
+
+==============================================================================
+1. SHAPES: every tensor in one optimiser step (Task 1)
+==============================================================================
+  one step = 4 micro-batches x 8 sequences x 256 tokens = 32 sequences seen by the optimiser
+
+  tensor                    shape                 dtype     meaning
+  --------------------------------------------------------------------------------------------------
+  tokens (micro-batch 1)    [8, 256]              int64     B sequences x T token ids
+  targets (shifted, masked) [8, 255]              int64     B x (T-1): next token, -100 where masked
+  rope cos / sin            [256, 64]             float32   T x hd: one rotation angle per position, per pair
+  tok_emb(tokens)           [8, 256, 384]         float32   one D-vector per token: B x T x D
+  block 1 attn_norm         [8, 256, 384]         float32   RMSNorm keeps the shape, rescales each token vector
+  q_proj output             [8, 256, 384]         bfloat16  queries before splitting: B x T x D
+  k_proj output             [8, 256, 384]         bfloat16  keys before splitting
+  v_proj output             [8, 256, 384]         bfloat16  values before splitting
+  q (heads split, RoPE)     [8, 6, 256, 64]       bfloat16  B x H x T x hd: 6 heads of 64
+  k (heads split, RoPE)     [8, 6, 256, 64]       bfloat16  same: one key per token per head
+  v (heads split)           [8, 6, 256, 64]       bfloat16  same: one value per token per head
+  attention output          [8, 6, 256, 64]       bfloat16  B x H x T x hd, before merging heads
+  o_proj output             [8, 256, 384]         bfloat16  heads merged back and mixed: B x T x D
+  block 1 ffn_norm          [8, 256, 384]         float32   RMSNorm again before the FFN
+  ffn gate(x)               [8, 256, 1024]        bfloat16  B x T x 1024: widened, 'how much'
+  ffn up(x)                 [8, 256, 1024]        bfloat16  B x T x 1024: widened, 'what'
+  ffn down(...)             [8, 256, 384]         bfloat16  back to B x T x D, added to the residual stream
+  block 1 output            [8, 256, 384]         float32   residual stream: same shape after every block
+  ... blocks 2-8            [8, 256, 384]                   same shape: blocks refine, never resize
+  final_norm (hidden h)     [8, 256, 384]         float32   what the head reads
+  logits                    [8, 256, 8192]        bfloat16  B x T x V: a score for each of 8192 tokens
+  logits[:, :-1] flattened  [2040, 8192]          bfloat16  B*(T-1) rows: one classification each
+  targets flattened         [2040]                int64     one correct id per row
+  loss (sum, micro-batch 1) scalar                float32   summed over 2,039 real targets
+
+  real targets per micro-batch: [2039, 2040, 2040, 2038]  -> total 8,157
+  step loss = (sum of all token losses) / 8,157 = 9.0867
+
+  after backward() on all 4 micro-batches, before clipping:
+  parameter                     weight shape    grad shape      grad dtype meaning
+  tok_emb.weight                [8192, 384]     [8192, 384]     float32    one number per weight
+  blocks.0.attn_norm.weight     [384]           [384]           float32    one number per weight
+  blocks.0.attn.q_proj.weight   [384, 384]      [384, 384]      float32    one number per weight
+  blocks.0.attn.o_proj.weight   [384, 384]      [384, 384]      float32    one number per weight
+  blocks.0.ffn.gate.weight      [1024, 384]     [1024, 384]     float32    one number per weight
+  blocks.0.ffn.down.weight      [384, 1024]     [384, 1024]     float32    one number per weight
+  final_norm.weight             [384]           [384]           float32    one number per weight
+  lm_head.weight                [8192, 384]     [8192, 384]     float32    one number per weight
+  ... 75 parameter tensors in all; every .grad has its weight's shape
+
+  grad norm (before clip)       scalar          4.9713  one length for ALL 20,453,760 gradients
+
+  AdamW state after opt.step(), for blocks.0.attn.q_proj.weight:
+    step          scalar          float32   how many updates so far
+    exp_avg       [384, 384]      float32   running mean of gradients (momentum)
+    exp_avg_sq    [384, 384]      float32   running mean of squared gradients
+
+  bytes held for every weight in this run (Section 13):
+    weights fp32 4 + grads 4 + AdamW m and v 8 = 16 bytes/weight -> 312 MiB for 20.45M weights, before activations
+
+==============================================================================
+2. GRADIENT CHECK: nudge one weight, compare with backward() (Task 2)
+==============================================================================
+  dropout = 0.0: the forward pass is repeatable, so a nudge measures only the weight
+  two identical forward passes: 9.050734470237 vs 9.050734470237 (difference 0.0e+00)
+
+  weight blocks.0.attn.q_proj.weight[58, 314] (largest gradient in that matrix)
+  backward() says dLoss/dw = +0.0021223785  (fp64)
+
+     nudge     one-sided slope  rel. error       central slope  rel. error
+     1e-01       +0.0021128834     4.5e-03       +0.0021221391     1.1e-04
+     1e-02       +0.0021214504     4.4e-04       +0.0021223761     1.1e-06
+     1e-03       +0.0021222859     4.4e-05       +0.0021223785     1.2e-08
+     1e-04       +0.0021223692     4.4e-06       +0.0021223785     7.7e-09
+     1e-05       +0.0021223775     5.0e-07       +0.0021223785     4.8e-09
+     1e-06       +0.0021223769     7.5e-07       +0.0021223778     3.3e-07
+  One-sided: error shrinks with the nudge (curvature). Central cancels most of it.
+  Too small a nudge and rounding in the loss itself takes over.
+
+  five weights, central nudge 1e-5, fp64:
+  weight                        index               backward()           nudge  rel. error
+  blocks.0.attn.q_proj.weight   [58, 314]        +0.0021223785   +0.0021223785     4.8e-09
+  blocks.7.ffn.down.weight      [338, 759]       +0.0266525483   +0.0266525483     7.1e-11
+  lm_head.weight                [263, 170]       +0.1026216793   +0.1026216792     9.0e-10
+  final_norm.weight             [138]            +0.0093114953   +0.0093114952     8.4e-09
+  tok_emb.weight                [379, 216]       +0.2408635480   +0.2408635479     7.5e-10
+
+  the same check at lower precision (first weight, compared with the fp64 answer):
+  precision      nudge    measured slope  rel. error
+  fp64           1e-05       +0.00212238     4.8e-09
+  fp32           1e-02       +0.00214577     1.1e-02
+  fp32           1e-03       +0.00190735     1.0e-01
+  fp32           1e-04       +0.00000000     1.0e+00
+  bf16           1e-01       -0.00005722     1.0e+00
+  bf16           1e-02       +0.00567436     1.7e+00
+  bf16           1e-03       +0.03719330     1.7e+01
+  In bf16 the loss itself has only ~3 significant digits, so a small nudge is lost in
+  rounding: gradient checks must run in fp32 or fp64.
+
+==============================================================================
+3. THE NUMBER 0.1 IN fp32, bf16 AND fp8 E4M3 (Task 6)
+==============================================================================
+  Step 1. Write 0.1 as (1 + fraction) x 2^power:  0.1 = 1.6 x 2^-4
+  Step 2. The fraction 0.6 in binary, by repeated doubling:
+            0.6 x 2 = 1.2  -> bit 1
+            0.2 x 2 = 0.4  -> bit 0
+            0.4 x 2 = 0.8  -> bit 0
+            0.8 x 2 = 1.6  -> bit 1
+            0.6 x 2 = 1.2  -> bit 1
+            0.2 x 2 = 0.4  -> bit 0
+            0.4 x 2 = 0.8  -> bit 0
+            0.8 x 2 = 1.6  -> bit 1
+            0.6 x 2 = 1.2  -> bit 1
+            0.2 x 2 = 0.4  -> bit 0
+            0.4 x 2 = 0.8  -> bit 0
+            0.8 x 2 = 1.6  -> bit 1
+          0.6 = 0.100110011001...  (1001 repeats forever, so every format must round)
+
+  Step 3. Exponent field = power + bias; mantissa = first bits of the fraction, rounded:
+
+  format    s  exponent   mantissa                  stored value          rel. error  PyTorch agrees
+  fp32      0  01111011   10011001100110011001101   0.100000001490116     1.49e-08    yes
+               = 123 - bias 127 = 2^-4;  mantissa 5033165/8388608 -> (1 + 0.6000000238) x 2^-4
+  bf16      0  01111011   1001101                   0.10009765625         9.77e-04    yes
+               = 123 - bias 127 = 2^-4;  mantissa 77/128 -> (1 + 0.6015625) x 2^-4
+  fp8 E4M3  0  0011       101                       0.1015625             1.56e-02    yes
+               = 3 - bias 7 = 2^-4;  mantissa 5/8 -> (1 + 0.625) x 2^-4
+
+  What each format can hold (range is set by exponent bits, detail by mantissa bits):
+  format     exp  mant  decimal digits     largest  smallest normal  smallest subnormal
+  fp32         8    23             7.2     3.4e+38         1.18e-38             1.4e-45
+  bf16         8     7             2.4    3.39e+38         1.18e-38            9.18e-41
+  fp16         5    10             3.3    6.55e+04          6.1e-05            5.96e-08
+  fp8 E4M3     4     3             1.2         448           0.0156             0.00195
+  (fp8 E4M3 has no infinity and only 448 as its top: real fp8 training shares a scale
+   per block or tensor, exactly the idea in Section 11.)
+
+Session 10 done in 0.1 min.
