@@ -1,0 +1,9 @@
+device: cuda
+  token embedding                3,145,728
+  attention (all layers)         4,718,592
+  ffn / SwiGLU (all layers)      9,437,184
+  norms                              6,528
+  lm head                        3,145,728
+  TOTAL                         20,453,760
+tokens (2, 256)  hidden (2, 256, 384)  logits (2, 256, 8192)
+self-test OK

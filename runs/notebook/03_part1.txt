@@ -1,0 +1,209 @@
+
+==============================================================================
+1. SHAPES: tokens -> logits -> shift -> flatten -> scalar
+==============================================================================
+  tokens                    (4, 256)            B sequences x T token ids
+  logits                    (4, 256, 8192)      B x T positions x V scores
+  inputs = tokens[:, :-1]   (4, 255)            T-1: the last token predicts nothing we have
+  targets = tokens[:, 1:]   (4, 255)            T-1: the first token is predicted by nothing
+  logits[:, :-1]            (4, 255, 8192)      scores aligned with targets
+  flat logits               (1020, 8192)        B*(T-1) rows, one classification each
+  flat targets              (1020,)             one correct class id per row
+  loss                      scalar              mean over all B*(T-1) rows
+
+  check: targets[:, t] == inputs[:, t+1] for every t  -> OK
+
+==============================================================================
+2. THE SHIFT, AS STRINGS (each row: this input predicts that target)
+==============================================================================
+
+Row 0, first positions:
+   pos  input               ->  target              
+     0  'ile'               ->  ':'                 
+     1  ':'                 ->  ' James'            
+     2  ' James'            ->  ' II'               
+     3  ' II'               ->  ':'                 
+     4  ':'                 ->  ' War'              
+     5  ' War'              ->  'rior'              
+     6  'rior'              ->  ','                 
+     7  ','                 ->  ' King'             
+     8  ' King'             ->  ' and'              
+     9  ' and'              ->  ' S'                
+    10  ' S'                ->  'aint'              
+    11  'aint'              ->  ' by'               
+
+No <eos> in this batch, so here is the first boundary in the val data:
+  input               ->  target              
+  ' purs'             ->  'uit'               
+  'uit'               ->  ' of'               
+  ' of'               ->  ' happ'             
+  ' happ'             ->  'iness'             
+  'iness'             ->  '.'                 
+  '.'                 ->  <eos>                 <- fine: learns to END a document
+  <eos>               ->  'T'                   <- BAD: predicts doc 2 from doc 1 (masked in section 6)
+  'T'                 ->  'aking'             
+  'aking'             ->  ' Pl'               
+  ' Pl'               ->  'ay'                
+  'ay'                ->  ' Ser'              
+  ' Ser'              ->  'ious'              
+
+==============================================================================
+3. UNTRAINED LOSS AND PERPLEXITY
+==============================================================================
+  positions counted         1,020
+  loss (F.cross_entropy)    9.1161
+  loss (by hand)            9.1161
+  perplexity = exp(loss)    9,101
+  ln(V), uniform guess      9.0109   (perplexity 8,192)
+  ln(V) + sigma^2/2         9.0871   (sigma = logit std 0.390)
+
+  loss - ln(V) = +0.1052  -> OK
+
+==============================================================================
+4. WHY THE SHIFT MATTERS: 150 training steps, correct vs. no shift
+==============================================================================
+  training run A (correct shift) ...
+  training run B (no shift: predict your own token) ...
+
+    step     A correct    B no shift
+       0        9.0916        9.1184
+      25        7.3810        4.4465
+      50        7.1961        1.8147
+      75        7.0697        0.8830
+     100        6.7846        0.3433
+     125        6.6296        0.1897
+     150        6.4441        0.1284
+
+  Both start near ln(V): the bug is invisible at initialisation.
+  B falls far faster because copying the input is trivial, not because it learned language.
+
+==============================================================================
+5. PADDING MASK
+==============================================================================
+  Batch: 4 real documents cut to different lengths, right-padded with <pad> to T=256
+    row 0: 256 real tokens +   0 pads -> 255 real targets
+    row 1: 192 real tokens +  64 pads -> 191 real targets
+    row 2: 128 real tokens + 128 pads -> 127 real targets
+    row 3:  64 real tokens + 192 pads ->  63 real targets
+
+  Row 3 at the edge of its real text:
+   pos  input               ->  target              counted?
+    60  ' W'                ->  'ile'               yes
+    61  'ile'               ->  'en'                yes
+    62  'en'                ->  ' W'                yes
+    63  ' W'                ->  <pad>               NO (target is <pad>)
+    64  <pad>               ->  <pad>               NO (target is <pad>)
+    65  <pad>               ->  <pad>               NO (target is <pad>)
+
+  how the loss is averaged                     positions      loss
+  A. everything, pads included                     1,020    9.2813
+  B. pads masked (correct)                           636    6.6192
+  C. pads masked, but divided by B*(T-1)           1,020    4.1273
+     (loss on the pad targets alone)                 384   13.6904
+
+  C = B x 636/1020 = B x 0.624: the loss shrinks with the share of real tokens,
+  which changes from batch to batch, so C is not comparable across batches.
+  A is high here because this model never saw <pad> as a target. If you TRAINED with
+  pads included, it would learn '<pad> follows <pad>' and A would look better than it is.
+
+  causal check: row 3's logits alone vs. with pads after it, max |diff| = 2.86e-06
+  (~0: pads sit to the RIGHT, and causal attention only looks LEFT)
+
+==============================================================================
+6. DOCUMENT-BOUNDARY MASK
+==============================================================================
+  Batch: 16 windows of T=256, each containing a document boundary
+
+                                       positions      loss
+  without boundary mask                    4,080    6.4899
+  with boundary mask                       4,064    6.4924
+
+  Mean loss by kind of position:
+  <eos> -> next doc (masked)                  16    5.8399
+  last token -> <eos> (kept)                  16    5.7775
+  everything else                          4,048    6.4953
+
+  First 4 boundaries, with the loss on each pair:
+  input               ->  target                  loss
+  '.'                 ->  <eos>                  4.723  kept
+  <eos>               ->  'The'                  2.194  MASKED
+  'm'                 ->  <eos>                  7.548  kept
+  <eos>               ->  'Ch'                   6.288  MASKED
+  '.'                 ->  <eos>                  4.683  kept
+  <eos>               ->  'W'                    4.760  MASKED
+  ')'                 ->  <eos>                  6.114  kept
+  <eos>               ->  'Re'                   7.474  MASKED
+
+  Here the masked pairs are EASIER than average (5.84 vs 6.50).
+  Documents often start the same way ('The', a title word), so even early in training
+  the model has a generic start-of-document guess. Masking them RAISES the loss by +0.0026.
+  In a normal random batch only ~0.08% of positions are boundaries, so the average barely
+  moves either way. The size of the change isn't the point. The reason to mask is that the
+  target asks the model to predict document 2 from document 1, a relationship that doesn't exist.
+  Note: the loss mask doesn't stop ATTENTION from crossing the boundary. Tokens after
+  <eos> can still attend to document 1; a document-aware attention mask would fix that.
+
+==============================================================================
+7. TIED VS UNTIED OUTPUT HEAD
+==============================================================================
+  component                           untied          tied
+  token embedding                  3,145,728     3,145,728
+  attention (all layers)           4,718,592     4,718,592
+  ffn / SwiGLU (all layers)        9,437,184     9,437,184
+  norms                                6,528         6,528
+  lm head                          3,145,728             0
+  TOTAL                           20,453,760    17,308,032
+
+  saved by tying: 3,145,728 = V x D = 8,192 x 384  (15.4% of the untied model)
+  (tied: the head reuses the embedding matrix, so it adds 0 new parameters)
+
+  Same arithmetic at the course's V5 size: 131,072 x 4,096 = 536,870,912 per matrix.
+  In a small model like ours the head is a big share of all parameters; that share
+  is why tying is popular at small scale.
+
+==============================================================================
+8. ORDINARY VS CHUNKED CROSS-ENTROPY (output head + loss, forward + backward)
+==============================================================================
+  hidden states h: [N, D] = [16,320, 384]   (batch 64 x 255 positions)
+  full logits    : [N, V] = [16,320, 8,192] = 510 MiB in fp32
+
+  method                 logits held      loss   peak MiB  vs ordinary  median ms  max grad diff
+  ordinary                    16,320    6.4910     1548.0         1.0x       70.6              -
+  chunked 4096                 4,096    6.4910      423.9    3.7x less       61.9        4.2e-03
+  chunked 1024                 1,024    6.4910      132.8   11.7x less       75.0        8.4e-03
+  chunked 256                    256    6.4910       60.2   25.7x less      114.5        1.5e-02
+
+  'logits held' = rows of logits in memory at once. 'max grad diff' = largest gradient
+  difference vs ordinary, relative to the largest gradient. Times are the median of 3 runs.
+
+  Loss: ordinary 6.4910 vs chunked 6.4910  (difference 0.0e+00)
+  Peak memory: 1548.0 MiB -> 132.8 MiB at chunk 1024 = 11.7x less
+
+  Time: chunk sizes faster than ordinary: [4096]; slower: [1024, 256].
+  Chunking adds work (backward recomputes each chunk's logits) but removes memory traffic:
+  the ordinary path writes and re-reads several full [N, V] tensors. Large chunks keep most
+  of that saving for little extra work; very small chunks pay a per-chunk overhead.
+  The objective is unchanged; only what exists in memory at once is different.
+
+  Gradient check, chunk 1024 vs ordinary (max relative difference):
+    bf16 (table above)  8.4e-03   bf16 keeps ~3 significant digits (relative step ~8e-3)
+    fp32                7.4e-06   fp32 keeps ~7 significant digits
+  -> rounding only: both methods compute the same gradients
+  Smaller chunks show bigger bf16 differences because each chunk's share of the head
+  gradient is rounded to bf16 before the shares are added: more chunks, more roundings.
+
+  Bonus: this loss is run A's validation loss on 16,308 positions,
+  perplexity exp(6.4910) = 659  (untrained was ~8,192)
+
+==============================================================================
+9. SUMMARY: PART 1 NUMBERS FOR THE WRITE-UP
+==============================================================================
+  1. shapes         tokens [4,256] -> hidden [4,256,384] -> logits [4,256,8192] -> scalar
+  2. shift check    targets[t] == inputs[t+1]: OK (strings printed in section 2)
+  3. padding mask   contributing tokens 1,020 -> 636; loss 9.2813 -> 6.6192
+  4. boundary mask  loss 6.4899 -> 6.4924 (16 boundaries masked)
+  5. perplexity     untrained 9,101 vs V = 8,192; after 150 steps 659
+  6. head params    untied 20,453,760 vs tied 17,308,032
+  7. peak memory    ordinary 1548.0 MiB vs chunked(1024) 132.8 MiB = 11.7x (batch 64); same loss; grad diff 8e-03 bf16 / 7e-06 fp32
+
+Part 1 done.

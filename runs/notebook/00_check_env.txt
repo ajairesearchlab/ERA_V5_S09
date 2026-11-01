@@ -1,0 +1,16 @@
+Python      : 3.12.13  (Windows 11)
+PyTorch     : 2.11.0+cu128
+Built CUDA  : 12.8
+GPU         : NVIDIA GeForce RTX 5060 Laptop GPU
+Compute cap.: sm_120
+VRAM        : 6.88 GiB free / 7.96 GiB total
+Build archs : sm_75, sm_80, sm_86, sm_90, sm_100, sm_120
+bf16 matmul : OK (checksum 25.475)
+bf16 support: True
+SDPA attn   : OK
+numpy       : 2.5.4
+datasets    : 5.1.0
+tokenizers  : 0.23.3
+tqdm        : 4.70.1
+
+PASS: environment is ready.

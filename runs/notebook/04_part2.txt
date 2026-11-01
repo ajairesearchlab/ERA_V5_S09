@@ -1,0 +1,103 @@
+
+==============================================================================
+SESSION 9 PART 2: one extra head predicting t+2
+==============================================================================
+  steps 1,500 x batch 32 x T 256 = 12.3M tokens (0.61 passes over the 20M training tokens)
+  lr 0.001 (warmup 100, cosine to 10%), AdamW, grad clip 1.0, bf16, chunked loss
+  validation: 20 fixed batches of 16 x 256, every 100 steps
+  loss: baseline L1;  mtp L1 + 1 x L2
+
+==============================================================================
+RUN: baseline  (1 head, 20,453,760 parameters)
+==============================================================================
+    step        lr train L1 train L2   val L1   val L2  acc1 %  acc2 %    time
+       0  1.00e-05        -        -   9.0889        -     0.0       -      1s
+     100  1.00e-03   7.2273        -   6.3199        -    11.2       -     34s
+     200  9.89e-04   6.0416        -   5.7887        -    13.6       -     58s
+     300  9.55e-04   5.6307        -   5.4664        -    15.7       -     80s
+     400  9.02e-04   5.3701        -   5.2451        -    17.2       -    104s
+     500  8.31e-04   5.1782        -   5.1007        -    18.1       -    130s
+     600  7.45e-04   5.0334        -   4.9733        -    19.2       -    155s
+     700  6.50e-04   4.9098        -   4.8852        -    19.8       -    180s
+     800  5.50e-04   4.8199        -   4.7837        -    20.7       -    205s
+     900  4.50e-04   4.7361        -   4.7111        -    21.6       -    231s
+    1000  3.55e-04   4.6669        -   4.6553        -    22.0       -    258s
+    1100  2.69e-04   4.6102        -   4.5992        -    22.7       -    283s
+    1200  1.98e-04   4.5464        -   4.5529        -    23.3       -    305s
+    1300  1.45e-04   4.4953        -   4.5161        -    23.7       -    329s
+    1400  1.11e-04   4.4683        -   4.4880        -    24.0       -    352s
+    1500  1.00e-04   4.4355        -   4.4708        -    24.2       -    375s
+
+  done in 6.2 min, peak GPU memory 1,833 MiB
+  saved C:\Users\ajair\Projects\ERA_V5\mini_llm\checkpoints\s09_baseline.pt
+
+==============================================================================
+RUN: mtp  (2 heads, 23,599,488 parameters)
+==============================================================================
+    step        lr train L1 train L2   val L1   val L2  acc1 %  acc2 %    time
+       0  1.00e-05        -        -   9.0889   9.0880     0.0     0.0      2s
+     100  1.00e-03   7.3306   7.5835   6.4108   7.0538    10.5     6.5     35s
+     200  9.89e-04   6.1332   6.9523   5.8935   6.8270    12.9     7.5     65s
+     300  9.55e-04   5.7551   6.7773   5.5991   6.6824    14.5     8.1     94s
+     400  9.02e-04   5.5127   6.6634   5.3919   6.5816    15.8     8.5    125s
+     500  8.31e-04   5.3154   6.5696   5.2214   6.5047    17.4     8.9    154s
+     600  7.45e-04   5.1533   6.4806   5.0809   6.4274    18.5     9.2    185s
+     700  6.50e-04   5.0180   6.4008   4.9826   6.3686    19.2     9.5    216s
+     800  5.50e-04   4.9157   6.3385   4.8732   6.3032    20.2    10.0    248s
+     900  4.50e-04   4.8322   6.2888   4.8025   6.2587    20.8    10.2    280s
+    1000  3.55e-04   4.7585   6.2422   4.7361   6.2197    21.5    10.4    312s
+    1100  2.69e-04   4.7017   6.2023   4.6804   6.1826    22.1    10.7    344s
+    1200  1.98e-04   4.6395   6.1615   4.6357   6.1530    22.6    10.8    376s
+    1300  1.45e-04   4.5895   6.1270   4.6006   6.1319    22.9    10.9    408s
+    1400  1.11e-04   4.5651   6.1109   4.5726   6.1113    23.2    11.0    441s
+    1500  1.00e-04   4.5309   6.0910   4.5548   6.0993    23.3    11.1    474s
+
+  done in 7.9 min, peak GPU memory 1,899 MiB
+  saved C:\Users\ajair\Projects\ERA_V5\mini_llm\checkpoints\s09_mtp.pt
+
+==============================================================================
+SUMMARY: PART 2 NUMBERS FOR THE WRITE-UP (validation, boundaries masked)
+==============================================================================
+    step   base L1    mtp L1    mtp L2     L1+L2    L2-L1  acc1 %  acc2 %
+       0    9.0889    9.0889    9.0880   18.1768   -0.001     0.0     0.0
+     100    6.3199    6.4108    7.0538   13.4646    0.643    10.5     6.5
+     200    5.7887    5.8935    6.8270   12.7205    0.933    12.9     7.5
+     300    5.4664    5.5991    6.6824   12.2815    1.083    14.5     8.1
+     400    5.2451    5.3919    6.5816   11.9735    1.190    15.8     8.5
+     500    5.1007    5.2214    6.5047   11.7260    1.283    17.4     8.9
+     600    4.9733    5.0809    6.4274   11.5083    1.346    18.5     9.2
+     700    4.8852    4.9826    6.3686   11.3512    1.386    19.2     9.5
+     800    4.7837    4.8732    6.3032   11.1764    1.430    20.2    10.0
+     900    4.7111    4.8025    6.2587   11.0613    1.456    20.8    10.2
+    1000    4.6553    4.7361    6.2197   10.9557    1.484    21.5    10.4
+    1100    4.5992    4.6804    6.1826   10.8630    1.502    22.1    10.7
+    1200    4.5529    4.6357    6.1530   10.7887    1.517    22.6    10.8
+    1300    4.5161    4.6006    6.1319   10.7325    1.531    22.9    10.9
+    1400    4.4880    4.5726    6.1113   10.6840    1.539    23.2    11.0
+    1500    4.4708    4.5548    6.0993   10.6541    1.544    23.3    11.1
+
+  What happened to each head (MTP run):
+    head 1 (t+1): 9.089 -> 4.555   fell 4.534
+    head 2 (t+2): 9.088 -> 6.099   fell 2.989
+    gap L2 - L1 : +0.643 at step 100 -> +1.544 at step 1500 (widened)
+
+  Both heads start near ln(V): neither knows anything yet. Head 2 stays above head 1
+  because it must predict t+2 without seeing t+1, so it has to spread its probability
+  over every way the text could continue. Easy local patterns (finishing a word, like
+  ' S' -> 'aint') help head 1 a lot and head 2 much less, which is why the gap usually
+  widens as training finds those patterns.
+
+  Top-1 accuracy at the end: head 1 23.3%, head 2 11.1%. Used as a draft for
+  speculative decoding, head 2 would guess the next-next token right about 11% of the
+  time: a rough proxy for the acceptance rate the notes discuss.
+
+  Head 1 with vs without head 2: 4.5548 vs 4.4708  (+0.0840)
+  The extra head cost head 1 some quality: two objectives share one small trunk.
+  Published MTP results report the benefit growing with model size; small models
+  can lose quality, as here.
+
+  plot saved: C:\Users\ajair\Projects\ERA_V5\mini_llm\runs\session09_part2\losses.png
+
+  log saved: C:\Users\ajair\Projects\ERA_V5\mini_llm\runs\session09_part2\log.csv
+
+Part 2 done.
