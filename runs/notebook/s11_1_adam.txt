@@ -1,0 +1,59 @@
+device cuda, model D=384 L=8 H=6 T=256 V=8192, <pad>=0 <eos>=1
+
+==============================================================================
+1. ADAM BY HAND, CHECKED AGAINST PYTORCH (Task 1)
+==============================================================================
+  one weight, w0 = 1.0, gradients [0.5, 0.4, 0.6, 0.45, 0.55], lr 0.001, betas (0.9, 0.999), eps 1e-08
+  by hand: plain Python floats (fp64), train/adam_by_hand.py
+
+    t      g          m           v     m_hat     v_hat        step  step/lr          w
+    1   0.50   0.050000  0.00025000  0.500000  0.250000 -0.00100000  -1.0000   0.999000
+    2   0.40   0.085000  0.00040975  0.447368  0.204977 -0.00098813  -0.9881   0.998012
+    3   0.60   0.136500  0.00076934  0.503690  0.256703 -0.00099414  -0.9941   0.997018
+    4   0.45   0.167850  0.00097107  0.488078  0.243132 -0.00098985  -0.9898   0.996028
+    5   0.55   0.206065  0.00127260  0.503199  0.255030 -0.00099642  -0.9964   0.995031
+  m_hat / sqrt(v_hat) stays near 1, so every step stays near lr while g ranges 0.40-0.60.
+
+  The same five steps through torch.optim.AdamW (weight_decay=0, so it is plain Adam):
+  PyTorch fp64 vs hand
+                       m           v       m_hat       v_hat        step           w
+    max abs      0.0e+00     0.0e+00     0.0e+00     0.0e+00     0.0e+00     0.0e+00
+    max rel      0.0e+00     0.0e+00     0.0e+00     0.0e+00     0.0e+00     0.0e+00
+    -> identical
+  PyTorch fp32 vs hand
+                       m           v       m_hat       v_hat        step           w
+    max abs      2.6e-09     7.2e-11     7.7e-09     2.2e-08     1.4e-08     1.3e-08
+    max rel      1.6e-08     8.7e-08     1.6e-08     8.7e-08     1.4e-05     1.3e-08
+    -> agree to about 5 significant digits
+    (fp32 keeps ~7 significant digits; 'step' is a difference of two numbers near 1.0,
+     so in fp32 it keeps fewer digits than the weight itself)
+
+  With decoupled weight decay 0.1 (AdamW proper):
+  PyTorch AdamW fp64 vs hand
+                       m           v       m_hat       v_hat        step           w
+    max abs      0.0e+00     0.0e+00     0.0e+00     0.0e+00     0.0e+00     0.0e+00
+    max rel      0.0e+00     0.0e+00     0.0e+00     0.0e+00     0.0e+00     0.0e+00
+    -> identical
+    decay adds -1.00e-04 to step 1 = -lr x wd x w = -1.00e-04
+
+  Our AdamW class (train/optim.py), which Task 2 needs for its bias-correction switch:
+  ours fp64 vs hand (decay 0.1)
+                       m           v       m_hat       v_hat        step           w
+    max abs      0.0e+00     0.0e+00     0.0e+00     0.0e+00     0.0e+00     0.0e+00
+    max rel      0.0e+00     0.0e+00     0.0e+00     0.0e+00     0.0e+00     0.0e+00
+    -> identical
+    ours vs hand with bias correction OFF: largest weight difference 0.0e+00
+
+  On the real model (20,453,760 weights), 5 steps: two identical copies, the gradient
+  computed once and copied, so any difference comes from the optimisers alone.
+     step  largest |update|  largest |w_torch - w_ours|  as share of update
+        1         1.011e-03                   7.451e-09             7.4e-06
+        2         1.010e-03                   7.451e-09             7.4e-06
+        3         1.007e-03                   1.192e-07             1.2e-04
+        4         1.007e-03                   1.192e-07             1.2e-04
+        5         1.008e-03                   1.192e-07             1.2e-04
+  Differences at fp32 rounding level: our AdamW is the same optimiser.
+
+  [adam took 0.1 min]
+
+Session 11 done in 0.1 min.

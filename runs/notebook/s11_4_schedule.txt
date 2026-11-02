@@ -1,0 +1,66 @@
+device cuda, model D=384 L=8 H=6 T=256 V=8192, <pad>=0 <eos>=1
+
+==============================================================================
+4. COSINE vs WSD, BOTH PLANNED FOR 300 STEPS, COMPARED AT 200 (Task 4)
+==============================================================================
+  peak lr 0.001, warmup 30 steps, both decay to 10% of peak.
+  cosine_300: cosine over the whole run.  wsd_300: flat at peak, linear decay over the
+  last 30 steps.  cosine_200: a run that KNEW it would stop at 200.
+  Validation on 20 fixed batches every 25 steps; step 200 is one of them.
+
+  RUN cosine_300  (lr at step 200: 3.77e-04)
+    step        lr     loss     true    gnorm     val      ms    time
+       0  3.33e-05   9.0867   9.0867    4.971  9.0889     229      1s
+      25  8.67e-04   7.2400   7.2400    0.689  7.2295     124      4s
+      50  9.88e-04   6.8175   6.8175    0.521  6.7623     105      7s
+      75  9.40e-04   6.4489   6.4489    0.546  6.4603     105     10s
+     100  8.59e-04   6.2265   6.2265    0.509  6.2648     108     13s
+     125  7.52e-04   6.1814   6.1814    0.489  6.1362     109     16s
+     150  6.28e-04   6.0070   6.0070    0.503  6.0309     106     19s
+     175  4.98e-04   5.9575   5.9575    0.490  5.9423     108     22s
+     200  3.72e-04   5.8413   5.8413    0.525  5.8726     109     25s
+     225  2.61e-04   5.8260   5.8260    0.529  5.8101     120     28s
+     250  1.74e-04   5.8157   5.8157    0.598  5.7603     109     31s
+     275  1.19e-04   5.7138   5.7138    0.481  5.7275     155     34s
+
+  RUN wsd_300  (lr at step 200: 1.00e-03)
+    step        lr     loss     true    gnorm     val      ms    time
+       0  3.33e-05   9.0867   9.0867    4.971  9.0889     126      0s
+      25  8.67e-04   7.2019   7.2019    0.568  7.1929     106      4s
+      50  1.00e-03   6.8317   6.8317    0.719  6.7693     108    560s
+      75  1.00e-03   6.4321   6.4321    0.556  6.4462     149    563s
+     100  1.00e-03   6.2098   6.2098    0.512  6.2508     141    567s
+     125  1.00e-03   6.1776   6.1776    0.507  6.1252     167    571s
+     150  1.00e-03   5.9974   5.9974    0.511  6.0224     157    575s
+     175  1.00e-03   5.9574   5.9574    0.472  5.9249     146    579s
+     200  1.00e-03   5.7978   5.7978    0.486  5.8406     110    583s
+     225  1.00e-03   5.7860   5.7860    0.501  5.7670     109    586s
+     250  1.00e-03   5.7337   5.7337    0.517  5.6944     130    589s
+     275  8.20e-04   5.6253   5.6253    0.467  5.6292     108    592s
+
+  RUN cosine_200  (lr at step 200: 1.00e-04)
+    step        lr     loss     true    gnorm     val      ms    time
+       0  3.33e-05   9.0867   9.0867    4.971  9.0889     116      0s
+      25  8.67e-04   7.2182   7.2182    0.660  7.2060     109      3s
+      50  9.70e-04   6.8290   6.8290    0.590  6.7676     111      7s
+      75  8.53e-04   6.4505   6.4505    0.559  6.4666     107     10s
+     100  6.73e-04   6.2321   6.2321    0.495  6.2725     110     13s
+     125  4.67e-04   6.2078   6.2078    0.577  6.1566     112     16s
+     150  2.79e-04   6.0327   6.0327    0.457  6.0599     109     19s
+     175  1.47e-04   6.0141   6.0141    0.496  6.0064     109     22s
+
+  run              lr at 200   val @200  train EMA @200   val @300
+  cosine_300        3.77e-04     5.8726          5.9189     5.7038
+  wsd_300           1.00e-03     5.8406          5.8964     5.5382
+  cosine_200        1.00e-04     5.9662          6.0001          -
+
+  at step 200: WSD - cosine = -0.0320   cosine planned for 200 - cosine planned for 300 = +0.0936
+  at step 300: WSD - cosine = -0.1656
+  Step-200 numbers compare models that are still mid-schedule: cosine has already decayed
+  to ~38% of peak, WSD has not started its decay. Which one to keep is in the write-up.
+
+  plot saved: C:\Users\ajair\Projects\ERA_V5\mini_llm\runs\session11\schedules.png
+
+  [schedule took 11.0 min]
+
+Session 11 done in 11.0 min.

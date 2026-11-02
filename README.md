@@ -235,3 +235,6 @@ mini_llm/
 
 ## Session 10 ReadMe file
 Session 10 (training loop): see README_S10.md
+
+## Session 11 ReadMe file
+Session 11 (Optimizers): see README_S11.md

@@ -1,0 +1,134 @@
+device cuda, model D=384 L=8 H=6 T=256 V=8192, <pad>=0 <eos>=1
+
+==============================================================================
+2. BIAS CORRECTION ON vs OFF (Task 2)
+==============================================================================
+  2a. One weight, 20 gradients (the notes' five, then ~0.5 +/- 0.05), lr 1e-3.
+      Step size in units of lr. The ratio OFF/ON at the same step is (1 - b1^t) / sqrt(1 - b2^t).
+
+                        ---- beta2 = 0.999 ----           ---- beta2 = 0.95 ----
+     t       g        ON       OFF    factor           ON       OFF    factor   
+     1  0.5000     1.000     3.162     3.162        1.000     0.447     0.447   
+     2  0.4000     0.988     4.199     4.250        0.991     0.603     0.608   
+     3  0.6000     0.994     4.921     4.950        0.991     0.711     0.718   
+     4  0.4500     0.990     5.386     5.442        0.989     0.790     0.798   
+     5  0.5500     0.996     5.776     5.797        0.994     0.855     0.861   
+     6  0.5471     1.001     6.060     6.057        0.996     0.907     0.910   
+     7  0.4302     0.991     6.188     6.245        0.991     0.941     0.950   
+     8  0.4660     0.989     6.306     6.379        0.990     0.972     0.982   
+     9  0.5185     0.993     6.422     6.470        0.993     1.000     1.007   
+    10  0.4492     0.988     6.448     6.528        0.990     1.018     1.028   
+    11  0.4964     0.990     6.492     6.559        0.992     1.037     1.045   
+    12  0.5090     0.993     6.521     6.569        0.994     1.052     1.058   
+    13  0.4584     0.989     6.490     6.561        0.992     1.061     1.069   
+    14  0.4345     0.983     6.429     6.539        0.989     1.065     1.077   
+    15  0.5097     0.988     6.426     6.507        0.992     1.075     1.084   
+    16  0.5497     0.996     6.439     6.465        0.996     1.085     1.089   
+    17  0.4677     0.993     6.372     6.416        0.995     1.087     1.092   
+    18  0.4833     0.993     6.315     6.362        0.995     1.089     1.095   
+    19  0.5823     1.004     6.328     6.303        1.001     1.097     1.096   
+    20  0.4721     1.000     6.243     6.241        0.998     1.095     1.097   
+  beta2 0.999: after 20 steps w = 0.980142 (ON) vs 0.881075 (OFF); OFF has moved 5.99x as far
+  beta2 0.95: after 20 steps w = 0.980132 (ON) vs 0.981014 (OFF); OFF has moved 0.96x as far
+
+  When does it stop mattering? The factor depends only on t, b1 and b2:
+     beta2  factor t=1    peak  at t  within 10%  within 1%
+     0.999        3.16    6.57    12       1,751      3,925
+      0.95        0.45    1.10    20           6         76
+  With beta2 0.999 the uncorrected v is pulled towards 0 for ~1/(1-0.999) = 1,000 steps,
+  so the OFF step is too BIG (up to 6.6x) and the gap widens before it closes.
+  With beta2 0.95, v catches up within ~20 steps and m dominates: the OFF step is first
+  too SMALL (0.45x), overshoots slightly (1.10x near t=20), then fades by ~76 steps.
+
+  2b. The real model, 300 steps, constant lr 0.001 and NO warmup, so the
+      correction is not hidden by a tiny early learning rate. Same weights, same batches.
+
+  RUN beta2 0.95, bias correction ON
+    step        lr     loss     true    gnorm     val      ms    time
+       0  1.00e-03   9.0867   9.0867    4.971  9.0895     317      1s
+      50  1.00e-03   6.9771   6.9771    0.557       -     172     10s
+     100  1.00e-03   6.3546   6.3546    0.422       -     114     17s
+     150  1.00e-03   6.1574   6.1574    0.480       -     119     25s
+     200  1.00e-03   5.9912   5.9912    0.500       -     128     31s
+     250  1.00e-03   5.9410   5.9410    0.488       -     119     37s
+
+  RUN beta2 0.95, bias correction OFF
+    step        lr     loss     true    gnorm     val      ms    time
+       0  1.00e-03   9.0867   9.0867    4.971  9.0895     131      0s
+      50  1.00e-03   6.8652   6.8652    0.487       -     121      6s
+     100  1.00e-03   6.2611   6.2611    0.505       -     122     12s
+     150  1.00e-03   6.0231   6.0231    0.487       -     122     18s
+     200  1.00e-03   5.8532   5.8532    0.500       -     121     24s
+     250  1.00e-03   5.7746   5.7746    0.597       -     122     30s
+
+  RUN beta2 0.999, bias correction ON
+    step        lr     loss     true    gnorm     val      ms    time
+       0  1.00e-03   9.0867   9.0867    4.971  9.0895     133      0s
+      50  1.00e-03   6.9633   6.9633    0.697       -     121      6s
+     100  1.00e-03   6.3434   6.3434    0.480       -     120     12s
+     150  1.00e-03   6.1522   6.1522    0.468       -     121     18s
+     200  1.00e-03   6.0092   6.0092    0.474       -     120     24s
+     250  1.00e-03   5.9217   5.9217    0.419       -     122     30s
+
+  RUN beta2 0.999, bias correction OFF
+    step        lr     loss     true    gnorm     val      ms    time
+       0  1.00e-03   9.0867   9.0867    4.971  9.0895     131      0s
+      50  1.00e-03   7.4364   7.4364    0.324       -     118      6s
+     100  1.00e-03   7.2300   7.2300    0.242       -     121     12s
+     150  1.00e-03   6.9938   6.9938    0.228       -     124     18s
+     200  1.00e-03   6.9087   6.9087    0.232       -     123     25s
+     250  1.00e-03   6.8126   6.8126    0.261       -     130     31s
+
+  beta2 0.95: loss (raw, same batch for both runs) and the median update-to-weight
+  ratio over all weight matrices
+    step   loss ON  loss OFF   OFF-ON   ratio ON  ratio OFF  OFF/ON  factor
+       1    9.0867    9.0867  +0.0000   4.99e-02   2.22e-02    0.44    0.45
+       2    8.7716    8.8042  +0.0326   3.51e-02   2.15e-02    0.61    0.61
+       3    8.3886    8.4850  +0.0964   2.92e-02   2.07e-02    0.71    0.72
+       5    7.9732    8.1434  +0.1702   2.14e-02   1.91e-02    0.89    0.86
+      10    7.4730    7.4980  +0.0249   1.24e-02   1.35e-02    1.09    1.03
+      12    7.3849    7.3588  -0.0260   1.06e-02   1.23e-02    1.16    1.06
+      20    7.3445    7.2816  -0.0630   9.95e-03   1.54e-02    1.54    1.10
+      30    7.1885    7.1387  -0.0499   1.06e-02   1.28e-02    1.21    1.08
+      50    6.9270    6.8175  -0.1095   1.04e-02   1.02e-02    0.98    1.04
+      75    6.6530    6.5647  -0.0883   1.00e-02   1.02e-02    1.02    1.01
+     100    6.3713    6.2706  -0.1007   9.69e-03   9.51e-03    0.98    1.00
+     150    6.1641    6.0320  -0.1321   8.80e-03   8.92e-03    1.01    1.00
+     200    6.0621    5.8973  -0.1648   8.79e-03   9.19e-03    1.05    1.00
+     300    5.7768    5.5933  -0.1836   8.62e-03   8.90e-03    1.03    1.00
+  final validation loss: ON 5.7991, OFF 5.6219 (-0.1772)
+  step sizes: OFF/ON update ratio stays within 10% from step 66
+  loss: smoothed training-loss gap stays under 0.02 from step never (gap at the end -0.1821)
+
+  beta2 0.999: loss (raw, same batch for both runs) and the median update-to-weight
+  ratio over all weight matrices
+    step   loss ON  loss OFF   OFF-ON   ratio ON  ratio OFF  OFF/ON  factor
+       1    9.0867    9.0867  +0.0000   4.99e-02   1.52e-01    3.05    3.16
+       2    8.7717    8.6588  -0.1129   3.51e-02   1.46e-01    4.16    4.25
+       3    8.3885    7.8232  -0.5654   2.92e-02   1.31e-01    4.48    4.95
+       5    7.9661    7.9657  -0.0005   2.07e-02   1.26e-01    6.08    5.80
+      10    7.4699    7.7628  +0.2929   1.22e-02   6.61e-02    5.41    6.53
+      12    7.3863    7.7334  +0.3472   1.03e-02   5.05e-02    4.88    6.57
+      20    7.3335    7.5845  +0.2510   9.45e-03   1.90e-02    2.01    6.24
+      30    7.1713    7.4199  +0.2486   9.71e-03   9.59e-03    0.99    5.57
+      50    6.8962    7.3569  +0.4607   1.15e-02   4.14e-03    0.36    4.50
+      75    6.6432    7.3541  +0.7110   1.08e-02   2.29e-03    0.21    3.72
+     100    6.3458    7.2224  +0.8766   1.18e-02   2.71e-03    0.23    3.24
+     150    6.1737    7.0052  +0.8315   1.11e-02   3.86e-03    0.35    2.68
+     200    6.0430    6.9267  +0.8837   1.14e-02   3.30e-03    0.29    2.35
+     300    5.7748    6.6480  +0.8732   1.08e-02   4.83e-03    0.45    1.96
+  final validation loss: ON 5.7924, OFF 6.6434 (+0.8510)
+  step sizes: OFF/ON update ratio stays within 10% from step never
+  loss: smoothed training-loss gap stays under 0.02 from step never (gap at the end +0.8595)
+
+  'factor' is the size difference the formula predicts for the same m and v. OFF/ON
+  also includes the two runs having drifted apart, so it matches only early on.
+  Two different answers to 'when does it stop mattering': the step SIZES converge when
+  the factor reaches 1, but any distance gained or lost before then stays in the weights,
+  so the LOSS gap can persist long after the steps themselves agree.
+
+  plot saved: C:\Users\ajair\Projects\ERA_V5\mini_llm\runs\session11\bias_correction.png
+
+  [bias took 2.6 min]
+
+Session 11 done in 2.6 min.

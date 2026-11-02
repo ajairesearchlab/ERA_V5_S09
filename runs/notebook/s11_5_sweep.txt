@@ -1,0 +1,103 @@
+device cuda, model D=384 L=8 H=6 T=256 V=8192, <pad>=0 <eos>=1
+
+==============================================================================
+5. LEARNING-RATE SWEEP ACROSS WIDTHS, AND AN ESTIMATE FOR 4,096 (Task 5)
+==============================================================================
+  widths [256, 384, 512, 1024], 8 layers, head_dim 64, FFN ~8/3 D. Learning rates ['0.00025', '0.0005', '0.001', '0.002', '0.004', '0.008', '0.016']
+  600 steps each = 4.9M tokens, warmup 100, cosine to 10%, AdamW (0.9, 0.95), wd 0.1, clip 1.0, same seed and batches for every run.
+  Score = validation loss on 20 fixed batches at the end. Init is std 0.02 at every width
+  (standard parameterisation, not muP), so the best lr is expected to move with width.
+
+    width   256: heads  4, FFN   704,   10.6M parameters
+    width   384: heads  6, FFN  1024,   20.5M parameters
+    width   512: heads  8, FFN  1408,   34.1M parameters
+    width  1024: heads 16, FFN  2752,  118.0M parameters
+       0  2.50e-06   9.0497   9.0497    3.528  9.0566     249      1s
+    width   256  lr  2.50e-04  val   5.6748   0.6 min (total 1 min, ~4 min left at this width)
+       0  5.00e-06   9.0497   9.0497    3.528  9.0566      72      0s
+    width   256  lr  5.00e-04  val   5.3244   0.6 min (total 1 min, ~3 min left at this width)
+       0  1.00e-05   9.0497   9.0497    3.528  9.0566      71      0s
+    width   256  lr  1.00e-03  val   5.1312   0.6 min (total 2 min, ~3 min left at this width)
+       0  2.00e-05   9.0497   9.0497    3.528  9.0566      71      0s
+    width   256  lr  2.00e-03  val   5.0667   0.6 min (total 3 min, ~2 min left at this width)
+       0  4.00e-05   9.0497   9.0497    3.528  9.0566      71      0s
+    width   256  lr  4.00e-03  val   5.0270   24.9 min (total 27 min, ~50 min left at this width)
+       0  8.00e-05   9.0497   9.0497    3.528  9.0566      71      0s
+    width   256  lr  8.00e-03  val   5.1187   0.7 min (total 28 min, ~1 min left at this width)
+       0  1.60e-04   9.0497   9.0497    3.528  9.0566      70      0s
+    width   256  lr  1.60e-02  val   5.6344   0.7 min (total 29 min)
+       0  2.50e-06   9.0867   9.0867    4.971  9.0889      94      0s
+    width   384  lr  2.50e-04  val   5.3946   0.9 min (total 30 min, ~5 min left at this width)
+       0  5.00e-06   9.0867   9.0867    4.971  9.0889      93      0s
+    width   384  lr  5.00e-04  val   5.1390   0.9 min (total 31 min, ~5 min left at this width)
+       0  1.00e-05   9.0867   9.0867    4.971  9.0889      95      0s
+    width   384  lr  1.00e-03  val   5.0111   26.1 min (total 57 min, ~105 min left at this width)
+       0  2.00e-05   9.0867   9.0867    4.971  9.0889      92      0s
+    width   384  lr  2.00e-03  val   5.0149   0.9 min (total 58 min, ~3 min left at this width)
+       0  4.00e-05   9.0867   9.0867    4.971  9.0889      93      0s
+    width   384  lr  4.00e-03  val   5.0205   0.9 min (total 59 min, ~2 min left at this width)
+       0  8.00e-05   9.0867   9.0867    4.971  9.0889      93      0s
+    width   384  lr  8.00e-03  val   5.3703   0.9 min (total 60 min, ~1 min left at this width)
+       0  1.60e-04   9.0867   9.0867    4.971  9.0889      94      0s
+    width   384  lr  1.60e-02  val   6.0091   0.9 min (total 60 min)
+       0  2.50e-06   9.1065   9.1065    5.106  9.1115     142      1s
+    width   512  lr  2.50e-04  val   5.2184   27.8 min (total 88 min, ~167 min left at this width)
+       0  5.00e-06   9.1065   9.1065    5.106  9.1115     132      1s
+    width   512  lr  5.00e-04  val   4.9943   1.3 min (total 90 min, ~6 min left at this width)
+       0  1.00e-05   9.1065   9.1065    5.106  9.1115     142      1s
+    width   512  lr  1.00e-03  val   4.9386   1.3 min (total 91 min, ~5 min left at this width)
+       0  2.00e-05   9.1065   9.1065    5.106  9.1115     128      1s
+    width   512  lr  2.00e-03  val   4.9731   25.0 min (total 116 min, ~75 min left at this width)
+       0  4.00e-05   9.1065   9.1065    5.106  9.1115     127      1s
+    width   512  lr  4.00e-03  val   5.1154   1.3 min (total 117 min, ~3 min left at this width)
+       0  8.00e-05   9.1065   9.1065    5.106  9.1115     129      1s
+    width   512  lr  8.00e-03  val   5.5257   40.6 min (total 158 min, ~41 min left at this width)
+       0  1.60e-04   9.1065   9.1065    5.106  9.1115     143      1s
+    width   512  lr  1.60e-02  val   6.4226   1.3 min (total 159 min)
+       0  2.50e-06   9.2136   9.2136    7.583  9.2247     362      1s
+    width  1024  lr  2.50e-04  val   4.9788   43.0 min (total 202 min, ~258 min left at this width)
+       0  5.00e-06   9.2136   9.2136    7.583  9.2247     375      1s
+    width  1024  lr  5.00e-04  val   4.9063   3.6 min (total 206 min, ~18 min left at this width)
+       0  1.00e-05   9.2136   9.2136    7.583  9.2247     379      1s
+    width  1024  lr  1.00e-03  val   4.9622   34.8 min (total 240 min, ~139 min left at this width)
+       0  2.00e-05   9.2136   9.2136    7.583  9.2247     355      1s
+    width  1024  lr  2.00e-03  val   5.1447   107.4 min (total 348 min, ~322 min left at this width)
+       0  4.00e-05   9.2136   9.2136    7.583  9.2247     355      1s
+    width  1024  lr  4.00e-03  val   5.6164   130.6 min (total 478 min, ~261 min left at this width)
+       0  8.00e-05   9.2136   9.2136    7.583  9.2247     356      1s
+    width  1024  lr  8.00e-03  val   6.1810   3.6 min (total 482 min, ~4 min left at this width)
+       0  1.60e-04   9.2136   9.2136    7.583  9.2247     358      1s
+    width  1024  lr  1.60e-02  val   6.4091   83.6 min (total 566 min)
+
+  validation loss after 600 steps (* = best on the grid)
+          lr      w=256      w=384      w=512     w=1024
+    2.50e-04    5.6748     5.3946     5.2184     4.9788 
+    5.00e-04    5.3244     5.1390     4.9943     4.9063*
+    1.00e-03    5.1312     5.0111*    4.9386*    4.9622 
+    2.00e-03    5.0667     5.0149     4.9731     5.1447 
+    4.00e-03    5.0270*    5.0205     5.1154     5.6164 
+    8.00e-03    5.1187     5.3703     5.5257     6.1810 
+    1.60e-02    5.6344     6.0091     6.4226     6.4091 
+
+    width  best grid lr  fitted lr*  loss at best  notes (SP)
+      256      4.00e-03    3.49e-03        5.0270     3.0e-03
+      384      1.00e-03    1.39e-03        5.0111           -
+      512      1.00e-03    1.09e-03        4.9386     1.5e-03
+     1024      5.00e-04    5.23e-04        4.9063     7.5e-04
+
+  fit: lr* ~ width^-1.31  (R^2 0.949; the notes' standard-parameterisation rule is width^-1)
+
+  estimates for width 4096:
+    log-log fit through all widths            7.74e-05
+    1/width from width 1024                   1.31e-04
+    slope of the two widest (512, 1024)       1.21e-04
+    notes, Section 12                         1.90e-04
+
+  -> use about 1.1e-04 at width 4096 (estimates span 7.7e-05 to 1.3e-04, a factor of 1.7)
+  confidence: moderate. Always: a 4x extrapolation beyond the widest point, one seed, 600-step runs (short runs favour higher lr), and loss curves that are flat near the minimum.
+
+  plot saved: C:\Users\ajair\Projects\ERA_V5\mini_llm\runs\session11\lr_sweep.png
+
+  [sweep took 565.7 min]
+
+Session 11 done in 565.7 min.

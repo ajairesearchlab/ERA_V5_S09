@@ -1,0 +1,94 @@
+device cuda, model D=384 L=8 H=6 T=256 V=8192, <pad>=0 <eos>=1
+
+==============================================================================
+3. UPDATE-TO-WEIGHT RATIO FOR EVERY LAYER: when does warmup stop mattering? (Task 3)
+==============================================================================
+  600 steps each, lr peak 0.001. Run A warms up over 100 steps; run B starts at the
+  peak. After step 100 both follow the identical cosine. Same weights, same batches.
+  ratio = ||w_after - w_before|| / ||w_before|| per parameter tensor, every step
+
+  RUN warmup
+    step        lr     loss     true    gnorm     val      ms    time
+       0  1.00e-05   9.0867   9.0867    4.971  9.0895     229      1s
+      50  5.10e-04   7.0809   7.0809    0.624       -     111      6s
+     100  1.00e-03   6.2888   6.2888    0.567  6.3423     111     12s
+     150  9.78e-04   5.9812   5.9812    0.519       -     112     17s
+     200  9.14e-04   5.7495   5.7495    0.588  5.8073     111     23s
+     250  8.15e-04   5.6337   5.6337    0.575       -     113     29s
+     300  6.89e-04   5.4619   5.4619    0.498  5.4697     115     35s
+     350  5.50e-04   5.4016   5.4016    0.508       -     113     40s
+     400  4.11e-04   5.2038   5.2038    0.515  5.2445     109     46s
+     450  2.85e-04   5.2058   5.2058    0.506       -     109     52s
+     500  1.86e-04   5.0992   5.0992    0.529  5.1034     109     57s
+     550  1.22e-04   5.0679   5.0679    0.522       -     109     63s
+  RUN no_warmup
+    step        lr     loss     true    gnorm     val      ms    time
+       0  1.00e-03   9.0867   9.0867    4.971  9.0895     124      0s
+      50  1.00e-03   7.0422   7.0422    0.393       -     110      6s
+     100  1.00e-03   6.4089   6.4089    0.614  6.4655     113     12s
+     150  9.78e-04   6.1604   6.1604    0.434       -     114     17s
+     200  9.14e-04   5.9978   5.9978    0.465  6.0447     109     23s
+     250  8.15e-04   5.9490   5.9490    0.446       -     111     29s
+     300  6.89e-04   5.8030   5.8030    0.433  5.7998     110     34s
+     350  5.50e-04   5.7506   5.7506    0.431       -     112     40s
+     400  4.11e-04   5.5763   5.5763    0.468  5.6178     112     46s
+     450  2.85e-04   5.5714   5.5714    0.440       -     139     52s
+     500  1.86e-04   5.5380   5.5380    0.449  5.5112     112     57s
+     550  1.22e-04   5.5127   5.5127    0.445       -     110     63s
+  3a. Median ratio over the 8 layers, by kind of weight (warmup | no warmup):
+  kind                  step 1          step 10         step 100         step 200         step 301         step 600
+  tok_emb     2.8e-04|2.8e-02  1.5e-03|1.4e-02  1.0e-02|9.5e-03  8.1e-03|7.7e-03  5.8e-03|5.6e-03  8.3e-04|8.1e-04 
+  q_proj      4.9e-04|4.9e-02  2.3e-03|1.3e-02  1.1e-02|1.1e-02  8.7e-03|8.5e-03  6.6e-03|6.2e-03  9.9e-04|9.8e-04 
+  k_proj      4.9e-04|4.9e-02  2.3e-03|1.3e-02  1.0e-02|1.0e-02  8.3e-03|8.3e-03  6.4e-03|5.9e-03  9.9e-04|9.6e-04 
+  v_proj      5.0e-04|5.0e-02  2.2e-03|1.1e-02  7.1e-03|7.3e-03  7.9e-03|7.2e-03  6.2e-03|5.1e-03  1.0e-03|9.0e-04 
+  o_proj      2.0e-03|2.0e-01  8.9e-03|3.7e-02  2.8e-02|1.9e-02  2.1e-02|1.5e-02  1.4e-02|9.8e-03  1.9e-03|1.5e-03 
+  gate        5.0e-04|5.0e-02  2.2e-03|1.3e-02  8.6e-03|7.6e-03  8.8e-03|7.7e-03  6.9e-03|5.9e-03  1.0e-03|9.3e-04 
+  up          5.0e-04|5.0e-02  2.2e-03|1.3e-02  8.2e-03|7.1e-03  8.7e-03|7.5e-03  6.9e-03|6.0e-03  1.0e-03|9.8e-04 
+  down        2.0e-03|2.0e-01  8.8e-03|4.0e-02  2.6e-02|1.6e-02  2.0e-02|1.6e-02  1.3e-02|1.1e-02  1.7e-03|1.6e-03 
+  attn_norm   1.0e-05|1.0e-03  4.9e-05|2.5e-04  1.7e-04|2.1e-04  1.8e-04|1.7e-04  1.4e-04|1.3e-04  2.3e-05|2.2e-05 
+  ffn_norm    1.0e-05|1.0e-03  5.0e-05|2.8e-04  2.3e-04|1.5e-04  2.3e-04|1.5e-04  1.6e-04|1.3e-04  2.7e-05|2.8e-05 
+  final_norm  1.0e-05|1.0e-03  6.3e-05|7.7e-04  5.3e-04|2.8e-04  5.2e-04|3.5e-04  4.6e-04|3.3e-04  7.3e-05|7.5e-05 
+  lm_head     5.0e-04|5.0e-02  3.0e-03|2.6e-02  1.0e-02|9.5e-03  7.8e-03|7.7e-03  5.2e-03|5.3e-03  7.2e-04|7.4e-04 
+  The notes' target for a healthy run is about 1e-3.
+
+  3b. By kind of weight (median over layers, 11-step rolling median): the step from which
+      the warmup run's ratio stays within 10% of the no-warmup run's, and where it peaks.
+  kind         converges  warmup peak  peak ratio  no-warmup step 1
+  tok_emb             81      step 95     1.0e-02           2.8e-02
+  q_proj             129     step 103     1.1e-02           4.9e-02
+  k_proj             417      step 99     1.1e-02           4.9e-02
+  v_proj           never     step 173     8.5e-03           5.0e-02
+  o_proj           never     step 104     2.8e-02           2.0e-01
+  gate               567     step 166     9.1e-03           5.0e-02
+  up                 534     step 167     9.0e-03           5.0e-02
+  down             never      step 89     2.5e-02           2.0e-01
+  attn_norm          568     step 168     2.0e-04           1.0e-03
+  ffn_norm           581     step 104     2.3e-04           1.0e-03
+  final_norm         451     step 175     5.5e-04           1.0e-03
+  lm_head             77      step 97     1.0e-02           5.0e-02
+
+  -> weight matrices: warmup stops changing the ratio at step 417 (median over kinds), latest 567; warmup itself ends at step 100
+     never within 10% in this run: v_proj, o_proj, down
+
+  3c. The same test for every individual tensor (noisier than 3b):
+  layer       q_proj     k_proj     v_proj     o_proj       gate         up       down  attn_norm   ffn_norm
+  0              503        493      never      never        566        532        416      never      never
+  1              565      never      never      never        133        132        201        538      never
+  2              438        537        598      never      never      never      never        584      never
+  3              340        396      never      never        595        588      never        595        598
+  4              349        417      never      never        588        563      never      never        574
+  5              256        534      never      never      never        596      never        579      never
+  6              247        228      never      never      never        569      never        567        598
+  7              351        464      never      never      never      never      never      never      never
+  tok_emb         81
+  lm_head         77
+  final_norm     451
+  39 of 75 tensors converge within the run
+
+  final validation loss: warmup 5.0325, no warmup 5.4519
+
+  plot saved: C:\Users\ajair\Projects\ERA_V5\mini_llm\runs\session11\update_ratio.png
+
+  [ratio took 2.3 min]
+
+Session 11 done in 2.3 min.

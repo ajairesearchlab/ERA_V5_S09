@@ -2,20 +2,19 @@
 Reusable training step (Session 10), for this session and later ones.
 
 One optimiser step:
-
     for each micro-batch:   forward -> loss -> backward      (gradients pile up in .grad)
     clip                    measure the grad norm, shrink all gradients if it exceeds the cap
     update                  optimizer.step()
     wipe                    optimizer.zero_grad()
 
 How the micro-batch losses are combined (Session 10 Section 8):
-
     "token"           sum of every token's loss / total real tokens       (correct)
     "mean_of_means"   average of each micro-batch's own average           (the pre-2024 bug)
-
 They agree exactly when every micro-batch holds the same number of real tokens,
-and disagree when lengths differ. Session 11 swaps the optimiser and schedule
-but keeps this loop.
+and disagree when lengths differ.
+
+Session 11 hooks (run_training): pass your own optimiser with opt=..., and a step_hook
+with before(model, step) / after(model, step) to watch every update (e.g. UpdateRatio).
 """
 import csv
 import math
@@ -100,6 +99,7 @@ def accumulate(model, micros, pad_id, eos_id, reduction="token", use_autocast=Tr
     counts = [(t != IGNORE).sum() for t in targets]                  # tensors: no sync
     total = torch.stack(counts).sum().clamp(min=1)
     K = len(micros)
+
     reported = torch.zeros((), device=micros[0].device)
     true = torch.zeros((), device=micros[0].device)
     for tokens, tg, n in zip(micros, targets, counts):
@@ -139,20 +139,25 @@ def evaluate(model, val_batches, eos_id, pad_id=None):
 
 # --------------------------------------------------------------------------- a full run
 def run_training(name, model, tc, train_data, val_batches, pad_id, eos_id, device,
-                 writer=None, reduction="token", lengths=None, lr_fn=None, log_every=50):
+                 writer=None, reduction="token", lengths=None, lr_fn=None, log_every=50,
+                 opt=None, step_hook=None):
     """
     Train for tc.steps optimiser steps and log EVERY step:
         loss (reported and true), grad norm before clipping, lr, real tokens, step time.
     Batches come from a generator seeded with tc.seed, so two runs with the same tc
     see identical data. lr_fn(step) overrides the warmup + cosine schedule.
+    opt (Session 11): use this optimiser instead of torch AdamW from build_optimizer.
+    step_hook (Session 11): object with before(model, step) and after(model, step),
+    called around every optimiser step.
     Returns a list of per-step dicts.
     """
-    opt = build_optimizer(model, tc)
+    opt = opt if opt is not None else build_optimizer(model, tc)
     gen = torch.Generator().manual_seed(tc.seed)
     T = model.cfg.context_length
     rows = []
     model.train()
     t_start = time.perf_counter()
+
     for step in range(tc.steps + 1):
         val = float("nan")
         if step % tc.eval_every == 0 or step == tc.steps:
@@ -162,12 +167,17 @@ def run_training(name, model, tc, train_data, val_batches, pad_id, eos_id, devic
             if writer:
                 writer.writerow(rows[-1])
             break
+
         lr = lr_fn(step) if lr_fn else lr_at(step, tc.steps, tc.lr, tc.warmup, tc.min_lr_frac)
         set_lr(opt, lr)
         t0 = time.perf_counter()
         micros = make_micro_batches(train_data, tc.accum_steps, tc.micro_batch, T, device,
                                     gen, lengths, pad_id)
+        if step_hook is not None:
+            step_hook.before(model, step)
         out = train_step(model, opt, micros, pad_id, eos_id, reduction, tc.grad_clip)
+        if step_hook is not None:
+            step_hook.after(model, step)
         row = {"run": name, "step": step, "lr": lr,
                "loss": out["reported"].item(),        # .item() waits for the GPU: step time is real
                "true_loss": out["true"].item(),
