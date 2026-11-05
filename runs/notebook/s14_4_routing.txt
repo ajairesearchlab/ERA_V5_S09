@@ -1,0 +1,51 @@
+device cuda, model D=384 L=8 FFN=1024; MoE 16 x 256, top-4; train.bin 60,000,000 tokens
+
+==============================================================================
+4. LOAD BALANCE DURING TRAINING (Task 4)
+==============================================================================
+  per optimiser step, per layer. Even load = 1/16 = 6.25% of routing slots.
+  MaxVio: (busiest - even) / even. starved: experts under 10% of the even share. zero: no tokens at all.
+
+  moe_r0
+    step  MaxVio med  MaxVio max  starved  zero  bias range  seq aux
+       0       0.785       1.283        0     0      0.0020    1.005
+       1       0.548       0.748        0     0      0.0040    1.001
+       4       0.583       0.842        0     0      0.0040    1.002
+       9       0.570       0.877        0     0      0.0040    1.002
+      24       0.494       0.627        0     0      0.0060    1.003
+      49       0.308       0.528        0     0      0.0140    1.005
+      99       0.189       0.328        0     0      0.0160    1.014
+     249       0.125       0.238        0     0      0.0250    1.035
+     499       0.129       0.310        0     0      0.0280    1.058
+     999       0.108       0.200        0     0      0.0340    1.067
+    1999       0.128       0.226        0     0      0.0390    1.061
+  last 100 steps, per layer: busiest and quietest expert as a multiple of even
+    layer      0      1      2      3      4      5      6      7
+    max     1.01   1.00   1.01   1.01   1.01   1.02   1.01   1.03
+    min     0.99   1.00   0.99   0.99   0.99   0.98   0.99   0.98
+  median MaxVio stays below 0.5 from step: 24
+
+  moe_r0.5
+    step  MaxVio med  MaxVio max  starved  zero  bias range  seq aux
+       0       0.600       1.243        0     0      0.0020    1.006
+       1       0.478       0.771        0     0      0.0040    1.002
+       4       0.552       0.819        0     0      0.0040    1.003
+       9       0.577       0.820        0     0      0.0040    1.003
+      24       0.465       0.644        0     0      0.0100    1.004
+      49       0.393       0.559        0     0      0.0140    1.005
+      99       0.193       0.396        0     0      0.0220    1.012
+     249       0.127       0.200        0     0      0.0240    1.028
+     499       0.134       0.252        0     0      0.0370    1.042
+     999       0.114       0.165        0     0      0.0350    1.048
+    1999       0.104       0.173        0     0      0.0270    1.053
+  last 100 steps, per layer: busiest and quietest expert as a multiple of even
+    layer      0      1      2      3      4      5      6      7
+    max     1.01   1.01   1.01   1.01   1.01   1.01   1.01   1.01
+    min     1.00   0.99   0.99   0.99   0.99   0.99   0.99   0.98
+  median MaxVio stays below 0.5 from step: 23
+
+  plot saved: C:\Users\ajair\Projects\ERA_V5\mini_llm\runs\session14\routing.png
+
+  [routing took 0.0 min]
+
+Session 14 done in 0.0 min.

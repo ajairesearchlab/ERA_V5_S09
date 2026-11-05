@@ -1,0 +1,58 @@
+device cuda, model D=384 L=8 FFN=1024; MoE 16 x 256, top-4; train.bin 60,000,000 tokens
+
+==============================================================================
+5b. WHAT DID THE EXPERTS LEARN? (moe_r0.5 after training, Task 5)
+==============================================================================
+  163,840 validation tokens, each token's category is that of the token itself.
+  top share: share of the category's routing slots taken by its favourite expert (even = 6.25%)
+  lift: for that expert, P(category | expert) / P(category). 1.0 = no preference.
+
+  layer 0
+  category         tokens  top expert  top share   lift
+  whitespace         1.7%           1      24.1%   3.63
+  punctuation       10.4%           3      11.5%   1.86
+  digits             2.7%          14      10.1%   1.60
+  function word     18.9%           0       9.5%   1.54
+  Capitalised        7.4%          13       8.5%   1.29
+  word start        31.9%           9       8.4%   1.31
+  word piece        26.4%          11       8.4%   1.35
+  other              0.6%          13      17.1%   2.61
+
+  layer 4
+  category         tokens  top expert  top share   lift
+  whitespace         1.7%           7      22.1%   3.41
+  punctuation       10.4%           0      14.6%   2.32
+  digits             2.7%          12      19.8%   2.96
+  function word     18.9%          15      11.6%   1.92
+  Capitalised        7.4%          12      13.3%   1.99
+  word start        31.9%           6       8.1%   1.24
+  word piece        26.4%           2       8.9%   1.38
+  other              0.6%           6      13.1%   2.01
+
+  layer 7
+  category         tokens  top expert  top share   lift
+  whitespace         1.7%           0      24.6%   3.75
+  punctuation       10.4%           0      16.6%   2.54
+  digits             2.7%           3      21.5%   3.11
+  function word     18.9%          11      13.8%   2.19
+  Capitalised        7.4%           2      15.3%   2.34
+  word start        31.9%          15      11.0%   1.87
+  word piece        26.4%           2       9.9%   1.51
+  other              0.6%           7      16.3%   2.49
+
+  best lift per layer (any expert), rows = layers:
+          whitespace punctuation      digits function wo Capitalised  word start  word piece       other
+       0        3.82        1.86        1.60        1.54        1.29        1.31        1.35        2.61
+       1        3.96        3.07        2.90        2.17        2.00        1.81        1.75        2.63
+       2        3.96        2.06        3.44        2.09        1.85        1.42        2.11        2.29
+       3        3.95        2.26        2.31        2.01        1.55        1.39        1.40        1.69
+       4        3.41        2.32        2.96        1.92        1.99        1.24        1.38        2.01
+       5        3.08        2.08        2.02        1.90        2.08        1.73        1.51        2.00
+       6        3.72        2.56        2.75        1.95        1.98        1.41        1.35        2.17
+       7        3.75        2.54        3.11        2.19        2.34        1.87        1.51        2.49
+
+  plot saved: C:\Users\ajair\Projects\ERA_V5\mini_llm\runs\session14\specialisation.png
+
+  [special took 0.1 min]
+
+Session 14 done in 0.1 min.

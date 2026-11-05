@@ -1,0 +1,37 @@
+device cuda, model D=384 L=8 FFN=1024; MoE 16 x 256, top-4; train.bin 60,000,000 tokens
+
+==============================================================================
+5a. THE SAME MoE RUN WITH BALANCING SWITCHED OFF (Task 5, moe_r0.5, 600 steps)
+==============================================================================
+  bias frozen at 0 and no sequence aux loss; same conversion, schedule and batches as the balanced run
+    step        lr     loss     true    gnorm     val      ms    time
+       0  1.00e-05   5.5124   5.5124    1.493  5.4509     345      1s
+      60  6.10e-04   4.4990   4.4990    0.601       -     394     19s
+     120  1.00e-03   4.4487   4.4487    0.571       -     403     43s
+     180  1.00e-03   4.6205   4.6205    0.554       -     278     65s
+     240  1.00e-03   4.4357   4.4357    0.532       -     421     88s
+     300  1.00e-03   4.4584   4.4584    0.550  4.4293     392    111s
+     360  1.00e-03   4.3563   4.3563    0.565       -     258    131s
+     420  1.00e-03   4.3587   4.3587    0.535       -     266    152s
+     480  1.00e-03   4.3534   4.3534    0.539       -     338    171s
+     540  1.00e-03   4.2913   4.2913    0.524       -     317    190s
+
+    step   val bal   val off  MaxVio bal  MaxVio off  starved bal  starved off  zero off
+       0    5.4509    5.4509       0.600       0.600            0            0         0
+     100    4.5391    4.5369       0.192       1.358            0           13         0
+     200    4.4987    4.4784       0.176       2.531            0           35         0
+     300    4.4583    4.4293       0.120       2.804            0           46         5
+     400    4.4187    4.3868       0.144       2.945            0           58        15
+     500    4.3798    4.3438       0.146       2.899            0           69        22
+     600    4.3520    4.3209       0.125       2.914            0           73        28
+
+  steps 550-600, busiest expert as a multiple of even, by layer:
+    balanced  1.01  1.02  1.03  1.03  1.02  1.08  1.03  1.03
+    off       3.80  2.85  4.00  3.81  3.91  3.98  3.97  3.99
+  experts starved (<10% of even) at the end, all layers: balanced 0, off 69 of 128
+
+  plot saved: C:\Users\ajair\Projects\ERA_V5\mini_llm\runs\session14\nobalance.png
+
+  [nobalance took 3.5 min]
+
+Session 14 done in 3.5 min.

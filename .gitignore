@@ -4,3 +4,7 @@ __pycache__/
 data/prepared/
 checkpoints/
 .ipynb_checkpoints/
+*.pt
+runs/session14/*_quick*
+runs/notebook/s14_0_quick.txt
+data/prepared/*.bin

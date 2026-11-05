@@ -1,0 +1,31 @@
+device cuda, model D=384 L=8 FFN=1024; MoE 16 x 256, top-4; train.bin 60,000,000 tokens
+
+==============================================================================
+2. CONVERT THE DENSE MODEL INTO A MIXTURE-OF-EXPERTS (Task 2)
+==============================================================================
+  every block's SwiGLU (width 1024) -> 16 experts of width 256, top-4: 4 x 256 = 1024 = the dense width
+  partition: 4 shuffled copies of the FFN, each cut into 4 slices of 256 neurons
+  router: softmax over 16, fp32, init std 0.002; routed scale = 1024/256 = 4
+
+                                     dense           MoE
+  total parameters              20,453,760    48,814,464   (2.39x)
+  active per token              20,453,760    20,502,912   (+49,152: the routers)
+  training state, 16 B/w             0.30G         0.73G
+
+  Check: the experts from copy 0 (slices 0..3), summed with weight 1, must equal the dense FFN.
+    moe_r0     largest difference over 8 layers, relative to the output size: 6.8e-07
+    moe_r0.5   largest difference over 8 layers, relative to the output size: 9.1e-01
+    r=0 matches to fp32 rounding; r=0.5 does not, because half of every expert was redrawn.
+
+  Validation loss at step 0 (no training after conversion):
+    dense checkpoint      4.3554
+    moe_r0                4.6280   (+0.2725)
+    moe_r0.5              5.4509   (+1.0954)
+
+  Routing at step 0 (validation batches). MaxVio = (busiest - even) / even, 0 = perfectly even:
+    moe_r0     MaxVio by layer: 0.15 0.79 1.14 0.77 1.18 1.27 0.52 0.48
+    moe_r0.5   MaxVio by layer: 0.23 0.45 1.20 0.53 0.96 0.61 0.97 1.10
+
+  [convert took 0.2 min]
+
+Session 14 done in 0.2 min.

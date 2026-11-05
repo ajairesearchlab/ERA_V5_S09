@@ -77,3 +77,21 @@ class TrainConfig:
 
     def to_dict(self):
         return asdict(self)
+
+
+@dataclass
+class MoEConfig:
+    """Session 14: the mixture-of-experts layer that replaces SwiGLU in every block.
+    Defaults: 16 experts of width 256, 4 per token, so 4 x 256 = 1,024 = the dense FFN width
+    (the notes' 8 x 768 = 6,144 pattern at our scale)."""
+    n_experts: int = 16
+    top_k: int = 4
+    expert_hidden: int = 256
+    scale: float | None = None          # routed scaling factor; None -> dense_hidden / expert_hidden
+    router_init_std: float = 0.002      # 1/10 of the usual 0.02 (Switch, notes Section 7)
+    bias_update: float = 1e-3           # gamma of the aux-loss-free bias (notes Section 13)
+    seq_aux_coef: float = 1e-4          # tiny per-sequence balance loss (DeepSeek-V3 recipe)
+    drop_r: float = 0.5                 # drop-upcycling: share of each expert's neurons redrawn
+
+    def to_dict(self):
+        return asdict(self)
